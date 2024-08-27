@@ -7,21 +7,18 @@ from email.message import EmailMessage
 from io import BytesIO
 from sql_connection import sql
 
-
-
-
-email = 'lucasaugusto995@gmail.com' #os.getenv('email_us')
+email = os.getenv('email_us') 
 senha = os.getenv('senha_app')
 email_remetente = os.getenv('email_de')
 db = sql()
 
-def enviar_email(email, senha, remetente, excel):
+def enviar_email(email, senha, destinatario, excel):
 #configuração do email
     smtp_server = 'smtp.gmail.com'
     smtp_port = 587
-    email_remetente = str(email)
-    senha_remetente = str(senha)
-    email_destinatario = remetente
+    email_remetente = email
+    senha_remetente = senha
+    email_destinatario = destinatario
 
     # Criação da mensagem de email
     msg = EmailMessage()
@@ -35,7 +32,9 @@ def enviar_email(email, senha, remetente, excel):
 
     # Enviando o email
     with smtplib.SMTP(smtp_server, smtp_port) as server:
+        server.ehlo()
         server.starttls()
+        server.ehlo()
         server.login(email_remetente, senha_remetente)
         server.send_message(msg)
 
@@ -53,6 +52,9 @@ arquivo = askopenfilename(
 #lê o arquivo excel
 df = pd.read_excel(arquivo)
 
+data_relatorio = df['Dt.Movimento'].dropna().iloc[0].date()
+data_relatorio = data_relatorio.strftime("%d/%m/%Y")
+
 #soma as taxas de entrega
 soma_taxa_entrega_geral = sum(df['Tx. Entrega'])
 
@@ -64,6 +66,7 @@ pedidos_raio1 = df.query('Entregador == "RAIO 1"')
 pedidos_raio = df['Entregador'].value_counts()
 pedidos_df = pedidos_raio.reset_index()
 pedidos_df.columns = ['Entregador', 'Quantidade']
+pedidos_df['Dt.Movimento'] = data_relatorio 
 pedidos_df = pedidos_df.sort_values(by='Quantidade', ascending=False)
 
 #adiciona a uma lista as entregas de cada rota
@@ -78,17 +81,18 @@ ifood = df[df['Entregador'] =='IFOOD']['Tx. Entrega'].sum()
 total = soma_taxa_raio1 + soma_taxa_raio2 + soma_taxa_raio3 + ifood
 
 #Dicionario com as informações tratadas de cada rota.
-dicionario_rotas = {'ROTA 1': (total_pedidos[0], soma_taxa_raio1),
-                    'ROTA 2': (total_pedidos[2], soma_taxa_raio2), 
-                    'ROTA 3': (total_pedidos[1], soma_taxa_raio3), 
-                    'IFOOD': (total_pedidos[3], ifood),
-                    'Total em taxas': ('', total)
+dicionario_rotas = {'ROTA 1': (total_pedidos[0], soma_taxa_raio1, ''),
+                    'ROTA 2': (total_pedidos[2], soma_taxa_raio2, ''), 
+                    'ROTA 3': (total_pedidos[1], soma_taxa_raio3, ''), 
+                    'IFOOD': (total_pedidos[3], ifood, ''),
+                    'Total em taxas': ('', total, data_relatorio)
                     }
 
 #convertendo o dicionário para um DataFrame e arredondando os valores
 resultado_df = pd.DataFrame(dicionario_rotas).T
-resultado_df.columns = ['Entregas', 'Total Taxa']
+resultado_df.columns = ['Entregas', 'Total Taxa', 'Data Relatório']
 resultado_df['Total Taxa'] = resultado_df['Total Taxa'].round(2)
+resultado_df['Data Relatório'] = data_relatorio
 
 #Convertendo o DataFrame para um arquivo Excel em memória usando openpyxl
 excel_buffer = BytesIO()
@@ -99,4 +103,4 @@ excel_buffer.seek(0)
 
 db.alimentar_tabela(resultado_df)
 
-enviar_email(email, senha, email_remetente, excel_buffer)
+enviar_email(email, senha , email_remetente, excel_buffer)
